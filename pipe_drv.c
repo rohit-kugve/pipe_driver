@@ -67,8 +67,8 @@ ssize_t pipe_read(struct file *filp, char __user *buf, size_t count, loff_t *f_p
 {
     printk(KERN_DEBUG "process %i (%s) going to sleep\n",
             current->pid, current->comm);
-    wait_event_interruptible(wq, flag != 0);
-    flag = 0;
+    wait_event_interruptible(wq, count > 0);
+    count--;
     printk(KERN_DEBUG "awoken %i (%s)\n", current->pid, current->comm);
     return 0; /* EOF */
 }
@@ -81,7 +81,7 @@ ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
 {
     printk(KERN_DEBUG "process %i (%s) awakening the readers...\n",
             current->pid, current->comm);
-    flag = 1;
+    count++;
     wake_up_interruptible(&wq);
     return count; /* succeed, to avoid retrial */
 
@@ -126,7 +126,7 @@ int init_module(void)
 {
     int retval;
     pipe_dev.minor = MISC_DYNAMIC_MINOR;
-    pipe_dev.name = "pipe";
+    pipe_dev.name = "pipe-file";    //This will be the name od the /dev/ file. We may need to take it as input arguement for insmod
     pipe_dev.fops = &pipe_fops;
     retval = misc_register(&pipe_dev);
     printk(KERN_ALERT "pipe_drv: init called %s %d \n",__FUNCTION__,__LINE__);
