@@ -36,6 +36,7 @@ static int flag = 0;
 int size = MAX_Q_SIZE; 
 struct queue { 
     int size;      //Maximum slots in buffer. Can be passed from cmd line during insmod
+    int n;  //number of currently occupied slots
     int r;      //read ptr
     int w;      //write ptr
     char **arr;  //array of pointers to strings
@@ -51,8 +52,9 @@ int init_queue( void )
        return -1;
    }
    memset(q.arr, 0, sizeof( char* )* q.size);
-   q.r = 0;   //read index
+   q.r = -1;   //read index
    q.w = 0;   //write index
+   q.n = 0;
    return 0;
 }
 
@@ -103,17 +105,21 @@ ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
     if ( mutex_lock_interruptible(&mtx)){
         return -EINTR;
     }
-    while( q.r == q.r ) {
-        printk(KERN_DEBUG "process%i (%s): q full, sleeping.\n", current->pid, current->comm);
-        mutex_unlock(&mtx);
-        wait_event_interruptible(pro_wq, q.r != q.w);
-        if ( mutex_lock_interruptible(&mtx)){
+    printk(KERN_DEBUG "process%i (%s): checking if slots available. count = %d\n", \
+            current->pid, current->comm, count);
+    while( q.n ==  q.size ) {
+        mutex_unlock(&mtx);     //giveup lock before sleeping
+        if(wait_event_interruptible(pro_wq, q.n < q.size)){        
+            printk(KERN_DEBUG "process %i (%s) got signal\n", current->pid, current->comm);
+            return -ERESTARTSYS;    //for Ctrl+C
+        }
+        if ( mutex_lock_interruptible(&mtx)){   //workup. get lock before checking why.
             return -EINTR;
         }
 
     }
    //we have the lock and slot available to write
-   q.arr[q.w] =  kmalloc(sizeof( char* )* q.size, GFP_KERNEL);
+   q.arr[q.w] =  kmalloc(sizeof( char) * count, GFP_KERNEL);
    if(q.arr[q.w] == NULL){
        //!!!!!!!! release lock here
        return -1;
@@ -123,8 +129,11 @@ ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
        //!!!!!!!! release lock here
        return -EFAULT;
    }
-   printk(KERN_DEBUG "process%i (%s): copied to slot %d\n", current->pid, current->comm, q.w);
-   q.w = (q.w + 1) % q.size;   //more write head
+   printk(KERN_DEBUG "process%i (%s): copied %s to slot %d\n", \
+           current->pid, current->comm,q.arr[q.w], q.w);
+   q.w++;   //more write head
+   if( q.w == q.size)    q.w = 0; //wrap around
+   q.n++; 
    mutex_unlock(&mtx);  // releas the lock and then wakeup others.
                         // Otherwise woken up processes cant get theis lock
    printk(KERN_DEBUG "process %i (%s) awakening the readers...\n",
@@ -139,14 +148,9 @@ ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
 /* =================================== all the operations */
 struct file_operations pipe_fops = {
 	.owner =	THIS_MODULE,
-//	.llseek =	no_llseek,
 	.read =		pipe_read,
  	.write =	pipe_write,
-//	.poll =		scull_p_poll,
-//	.unlocked_ioctl = scull_ioctl,
 	.open =		pipe_open,
-//	.release =	scull_p_release,
-//	.fasync =	scull_p_fasync,
 };
 /* =================================== init and cleanup */
 
