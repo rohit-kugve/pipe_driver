@@ -17,7 +17,7 @@
  */
 
 #include <linux/module.h>
-#include<linux/string.h>
+#include <linux/string.h>
 #include <linux/sched.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
@@ -52,7 +52,7 @@ int init_queue( void )
        return -1;
    }
    memset(q.arr, 0, sizeof( char* )* q.size);
-   q.r = -1;   //read index
+   q.r = 0;   //read index
    q.w = 0;   //write index
    q.n = 0;
    return 0;
@@ -61,19 +61,19 @@ int init_queue( void )
 
 module_param(size, int, 0);
 MODULE_PARM_DESC(q_size, "number of slots in pipe");
-/* =================================== a simple delayer */
 
-static void delay_tenths(int tenths)
+int reset_queue(void)
 {
-    unsigned long j = jiffies;
-
-    /* delay tenths tenths of a second */
-    j+= tenths * HZ / 10;
-    while (j > jiffies)
-        schedule();
+    int i = 0;
+    printk(KERN_ALERT "pipe_drv: %s %d : Reseting Queue\n",__FUNCTION__,__LINE__);
+    for( i = 0; i < q.size; i++ )   {
+        if( q.arr[i] != NULL )
+            kfree(q.arr[i]);
+    }
+    kfree(q.arr);
+    init_queue();
+    return 0;
 }
-
-
 int pipe_open (struct inode *inode, struct file *file)
 {
     //MOD_INC_USE_COUNT;
@@ -90,17 +90,62 @@ void pipe_close (struct inode *inode, struct file *filp)
 
 ssize_t pipe_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
-    printk(KERN_DEBUG "process %i (%s) going to sleep\n",
+    int len = 0;
+    //get the lock
+    if ( mutex_lock_interruptible(&mtx)){
+        return -EINTR;
+    }
+    printk(KERN_DEBUG "process%i (%s): checking if data available. count = %d\n", \
+            current->pid, current->comm, count);
+    while( q.n ==  0 ) {
+        mutex_unlock(&mtx);     //giveup lock before sleeping
+        if(wait_event_interruptible( con_wq, q.n > 0 )){        
+            printk(KERN_DEBUG "process %i (%s) got signal\n", current->pid, current->comm);
+            return -ERESTARTSYS;    //for Ctrl+C
+        }
+        if ( mutex_lock_interruptible(&mtx)){   //workup. get lock before checking why.
+            return -EINTR;
+        }
+
+    }
+    len =  strlen(q.arr[q.r]) + 1;  //we have the lock and data available to write
+    printk(KERN_DEBUG "string len = %d\n", len-1);
+    if( len < count ) // if user tries to read more than the string handle it.
+        count = len;
+    if (copy_to_user( buf, q.arr[q.r],count)) {
+       //up (&dev->sem);
+       //!!!!!!!! release lock here
+       return -EFAULT;
+    }
+    printk(KERN_DEBUG "process%i (%s): copied %s from slot %d\n", \
+           current->pid, current->comm, buf, q.r);
+    kfree(q.arr[q.r]);
+    q.r++;   //more read head
+    if( q.r == q.size)    q.r = 0; //wrap around
+    q.n--;   //decremnt total count 
+    mutex_unlock(&mtx);  // releas the lock and then wakeup others.
+                        // Otherwise woken up processes cant get theis lock
+    printk(KERN_DEBUG "process %i (%s) awakening the writers...\n",
             current->pid, current->comm);
-    //wait_event_interruptible(wq, count > 0);
-    //count--;
-    //printk(KERN_DEBUG "awoken %i (%s)\n", current->pid, current->comm);
-    return 0; /* EOF */
+    wake_up_interruptible(&pro_wq);
+    return count; /* succeed, to avoid retrial */
 }
 
 ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
                         loff_t *f_pos)
 {
+    int i = 0;
+    //FOR DEBUG ONLY
+    for( i = 0; i < count; i++) {
+        printk(KERN_DEBUG "buf[%d] = %d\n", i, buf[i]);
+    }
+    if( buf[0] == '0') {     // if user writes the magic number 0 then reset.
+        reset_queue();
+        return count;
+    }
+    //sorme error checking
+    if( count <= 0 )
+        return 0;
     //get the lock
     if ( mutex_lock_interruptible(&mtx)){
         return -EINTR;
@@ -128,7 +173,10 @@ ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
        //up (&dev->sem);
        //!!!!!!!! release lock here
        return -EFAULT;
-   }
+   }    
+   //if the input was not null terminated, terminate it. This cant done to buf directly 
+   q.arr[q.w][count -1] = '\0';
+
    printk(KERN_DEBUG "process%i (%s): copied %s to slot %d\n", \
            current->pid, current->comm,q.arr[q.w], q.w);
    q.w++;   //more write head
