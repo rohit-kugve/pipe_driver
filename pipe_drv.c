@@ -31,8 +31,6 @@ static DECLARE_WAIT_QUEUE_HEAD(pro_wq);
 static DECLARE_WAIT_QUEUE_HEAD(con_wq);
 static DEFINE_MUTEX(mtx);
 
-static int flag = 0;
-
 int size = MAX_Q_SIZE; 
 struct queue { 
     int size;      //Maximum slots in buffer. Can be passed from cmd line during insmod
@@ -193,14 +191,12 @@ ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
 
 
 
-/* =================================== all the operations */
 struct file_operations pipe_fops = {
 	.owner =	THIS_MODULE,
 	.read =		pipe_read,
  	.write =	pipe_write,
 	.open =		pipe_open,
 };
-/* =================================== init and cleanup */
 
 int init_module(void)
 {
@@ -221,7 +217,7 @@ int init_module(void)
     }
     mutex_init(&mtx);
     init_waitqueue_head(&pro_wq);
-    //init_waitqueue_head(&con_wq);
+    init_waitqueue_head(&con_wq);
     return 0;
 }
 
