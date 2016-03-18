@@ -26,6 +26,13 @@
 #include <asm/uaccess.h>
 #define MAX_Q_SIZE 5
 
+
+#define DRIVER_AUTHOR "hbagdi1 and rkugver1@binghamton.edu"
+#define DRIVER_DESC   "A sample driver"
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR(DRIVER_AUTHOR);
+MODULE_DESCRIPTION(DRIVER_DESC);
+
 static struct miscdevice pipe_dev;
 static DECLARE_WAIT_QUEUE_HEAD(pro_wq);
 static DECLARE_WAIT_QUEUE_HEAD(con_wq);
@@ -93,7 +100,7 @@ ssize_t pipe_read(struct file *filp, char __user *buf, size_t count, loff_t *f_p
     if ( mutex_lock_interruptible(&mtx)){
         return -EINTR;
     }
-    printk(KERN_DEBUG "process%i (%s): checking if data available. count = %d\n", \
+    printk(KERN_DEBUG "process%i (%s): checking if data available. count = %zu\n", \
             current->pid, current->comm, count);
     while( q.n ==  0 ) {
         mutex_unlock(&mtx);     //giveup lock before sleeping
@@ -148,7 +155,7 @@ ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
     if ( mutex_lock_interruptible(&mtx)){
         return -EINTR;
     }
-    printk(KERN_DEBUG "process%i (%s): checking if slots available. count = %d\n", \
+    printk(KERN_DEBUG "process%i (%s): checking if slots available. count = %zu\n", \
             current->pid, current->comm, count);
     while( q.n ==  q.size ) {
         mutex_unlock(&mtx);     //giveup lock before sleeping
