@@ -12,7 +12,9 @@ default:
 	
 	gcc producer.c -o producer
 	gcc consumer.c -o consumer
-
+install:
+	sudo insmod pipe_drv.ko 
+	sudo chmod a+rw /dev/pipe-file
 clean:
 	rm -f *.o
 	rm -f *.ko
