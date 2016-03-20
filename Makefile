@@ -9,6 +9,9 @@ else
 	PWD := $(shell pwd)
 default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+	
+	gcc producer.c -o producer
+	gcc consumer.c -o consumer
 
 clean:
 	rm -f *.o
@@ -16,4 +19,6 @@ clean:
 	rm -f *.mod.c
 	rm -f *.symvers
 	rm -f *.order
+	rm -f producer
+	rm -f consumer
 endif

@@ -139,11 +139,11 @@ ssize_t pipe_read(struct file *filp, char __user *buf, size_t count, loff_t *f_p
 ssize_t pipe_write (struct file *filp, const char __user *buf, size_t count,
                         loff_t *f_pos)
 {
-    int i = 0;
     //FOR DEBUG ONLY
-    for( i = 0; i < count; i++) {
-        printk(KERN_DEBUG "buf[%d] = %d\n", i, buf[i]);
-    }
+    // int i = 0;
+    // for( i = 0; i < count; i++) {
+    //     printk(KERN_DEBUG "buf[%d] = %d\n", i, buf[i]);
+    // }
     if( buf[0] == '0') {     // if user writes the magic number 0 then reset.
         reset_queue();
         return count;
